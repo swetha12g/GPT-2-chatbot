@@ -1,0 +1,133 @@
+From 5b7fda897979653957b6cdf5d997eae10b7345d7 Mon Sep 17 00:00:00 2001
+From: swetha12g <swetha12g@gmail.com>
+Date: Mon, 3 Jun 2024 20:36:57 +0530
+Subject: [PATCH] AI-2031 implementation
+
+---
+ Dockerfile       | 31 +++++++++++++++++++++++++++++++
+ Jenkinsfile      | 27 +++++++++++++++++++++++++++
+ llama_chatbot.py | 30 ++++++++++++++++++++++++++++++
+ requirements.txt |  2 ++
+ 4 files changed, 90 insertions(+)
+ create mode 100644 Dockerfile
+ create mode 100644 Jenkinsfile
+ create mode 100644 llama_chatbot.py
+ create mode 100644 requirements.txt
+
+diff --git a/Dockerfile b/Dockerfile
+new file mode 100644
+index 0000000..7a6d330
+--- /dev/null
++++ b/Dockerfile
+@@ -0,0 +1,31 @@
++# Use the official Python image from the Docker Hub
++FROM python:3.9-slim
++
++# Install system dependencies
++RUN apt-get update && apt-get install -y \
++    git \
++    wget \
++    && rm -rf /var/lib/apt/lists/*
++
++# Set the working directory in the container
++WORKDIR /app
++
++# Copy the requirements file into the container
++COPY requirements.txt .
++
++# Install Python dependencies
++RUN pip install --no-cache-dir -r requirements.txt
++
++# Copy the rest of the application code into the container
++COPY . .
++
++# Download the model and tokenizer files during build time to avoid downloading during runtime
++RUN python -c "\
++import transformers; \
++model_name = 'gpt2'; \
++tokenizer = transformers.GPT2Tokenizer.from_pretrained(model_name); \
++model = transformers.GPT2LMHeadModel.from_pretrained(model_name);"
++
++# Run the application
++CMD ["python", "llama_chatbot.py"]
++
+diff --git a/Jenkinsfile b/Jenkinsfile
+new file mode 100644
+index 0000000..ef736e6
+--- /dev/null
++++ b/Jenkinsfile
+@@ -0,0 +1,27 @@
++pipeline {
++    agent any
++
++    environment {
++        DOCKER_IMAGE = 'llama_s_chatbot'
++        DOCKER_TAG = 'latest'
++    }
++
++    stages {
++        stage('Build Docker Image') {
++            steps {
++                script {
++                    dockerImage = docker.build("${DOCKER_IMAGE}:${DOCKER_TAG}")
++                }
++            }
++        }
++
++        stage('Run Docker Container') {
++            steps {
++                script {
++                    dockerImage.run('cpus="4" -it')
++                }
++            }
++        }
++    }
++    
++}
+diff --git a/llama_chatbot.py b/llama_chatbot.py
+new file mode 100644
+index 0000000..f6114fa
+--- /dev/null
++++ b/llama_chatbot.py
+@@ -0,0 +1,30 @@
++import torch
++from transformers import GPT2LMHeadModel, GPT2Tokenizer
++
++def generate_response(prompt, model, tokenizer, max_length=50):
++    inputs = tokenizer(prompt, return_tensors="pt")
++    outputs = model.generate(inputs.input_ids, max_length=max_length, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
++    response = tokenizer.decode(outputs[0], skip_special_tokens=True)
++    return response
++
++def chat():
++    model_name = "gpt2"
++
++    # Load tokenizer
++    tokenizer = GPT2Tokenizer.from_pretrained(model_name)
++
++    # Load model
++    model = GPT2LMHeadModel.from_pretrained(model_name)
++
++    print("Welcome to the GPT-2 Chatbot! Type 'exit' to end the conversation.")
++    while True:
++        user_input = input("You: ")
++        if user_input.lower() == "exit":
++            print("Goodbye!")
++            break
++        response = generate_response(user_input, model, tokenizer)
++        print(f"Bot: {response}")
++
++if __name__ == "__main__":
++    chat()
++
+diff --git a/requirements.txt b/requirements.txt
+new file mode 100644
+index 0000000..4f492dd
+--- /dev/null
++++ b/requirements.txt
+@@ -0,0 +1,2 @@
++torch
++transformers
+-- 
+2.25.1
+
